@@ -87,6 +87,81 @@ class Pipeline {
   //! Operations to perform after map updates
   OperationsArray operations_;
 };
+
+class UnderwaterPipeline {
+ public:
+  using IntegratorMap =
+      std::unordered_map<std::string, std::unique_ptr<LieIntegratorBase>>;
+  using OperationsArray = std::vector<std::unique_ptr<MapOperationBase>>;
+
+  explicit UnderwaterPipeline(MapBase::Ptr occupancy_map,
+                    std::shared_ptr<ThreadPool> thread_pool = nullptr)
+      : occupancy_map_(std::move(occupancy_map)),
+        thread_pool_(thread_pool ? std::move(thread_pool)
+                                 : std::make_shared<ThreadPool>()) {}
+
+  // Copy construction is not supported
+  UnderwaterPipeline(const UnderwaterPipeline&) = delete;
+
+  //! Deregister all measurement integrators and map operations
+  void clear();
+
+  //! Returns true if an integrator with the given name has been registered
+  bool hasIntegrator(const std::string& integrator_name) const;
+  //! Deregister the integrator with the given name. Returns true if it existed.
+  bool removeIntegrator(const std::string& integrator_name);
+  //! Create and register a new integrator
+  LieIntegratorBase* addIntegrator(const std::string& integrator_name,
+                                const param::Value& integrator_params);
+  //! Register the given integrator, transferring ownership
+  LieIntegratorBase* addIntegrator(const std::string& integrator_name,
+                                std::unique_ptr<LieIntegratorBase> integrator);
+  //! Get a pointer to the given integrator, returns nullptr if it does not
+  //! exist
+  LieIntegratorBase* getIntegrator(const std::string& integrator_name);
+  //! Access all registered integrators (read-only)
+  const IntegratorMap& getIntegrators() { return integrators_; }
+  //! Deregister all integrators
+  void clearIntegrators() { integrators_.clear(); }
+
+  //! Create and register a new map operation
+  MapOperationBase* addOperation(const param::Value& operation_params);
+  //! Register the given map operation, transferring ownership
+  MapOperationBase* addOperation(std::unique_ptr<MapOperationBase> operation);
+  //! Access all registered map operations (read-only)
+  const OperationsArray& getOperations() { return operations_; }
+  //! Deregister all map operations
+  void clearOperations() { operations_.clear(); }
+
+  //! Integrate a given posed depth image, depth uncertainty image, and pose covariance
+  template <typename MeasurementA, typename MeasurementB, typename MeasurementC>
+  bool runIntegrators(const std::vector<std::string>& integrator_names,
+                      const MeasurementA& posed_depth,
+                      const MeasurementB& depth_uncertainty,
+                      const MeasurementC& pose_covariance);
+  //! Run the map operations
+  void runOperations(bool force_run_all = false);
+
+  //! Integrate a given measurement, then run the map operations
+  template <typename MeasurementA, typename MeasurementB, typename MeasurementC>
+  bool runPipeline(const std::vector<std::string>& integrator_names,
+                   const MeasurementA& posed_depth,
+                   const MeasurementB& depth_uncertainty,
+                   const MeasurementC& pose_covariance);
+
+ private:
+  //! Map data structure
+  const MapBase::Ptr occupancy_map_;
+
+  //! Threadpool shared among all input handlers and operations
+  const std::shared_ptr<ThreadPool> thread_pool_;
+
+  //! Measurement integrators that update the map
+  IntegratorMap integrators_;
+
+  //! Operations to perform after map updates
+  OperationsArray operations_;
+};
 }  // namespace wavemap
 
 #include "wavemap/pipeline/impl/pipeline_inl.h"

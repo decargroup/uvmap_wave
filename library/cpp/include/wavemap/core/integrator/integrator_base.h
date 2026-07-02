@@ -20,13 +20,15 @@ struct IntegratorType : TypeSelector<IntegratorType> {
     kCoarseToFineIntegrator,
     kWaveletIntegrator,
     kHashedWaveletIntegrator,
-    kHashedChunkedWaveletIntegrator
+    kHashedChunkedWaveletIntegrator,
+    kHashedChunkedWaveletLieIntegrator,
   };
 
   static constexpr std::array names = {
       "ray_tracing_integrator",    "fixed_resolution_integrator",
       "coarse_to_fine_integrator", "wavelet_integrator",
-      "hashed_wavelet_integrator", "hashed_chunked_wavelet_integrator"};
+      "hashed_wavelet_integrator", "hashed_chunked_wavelet_integrator",
+      "hashed_chunked_wavelet_lie_integrator"};
 };
 
 class IntegratorBase {
@@ -38,6 +40,25 @@ class IntegratorBase {
 
   virtual void integrate(const PosedPointcloud<>& pointcloud) = 0;
   virtual void integrate(const PosedImage<>& range_image) = 0;
+
+ protected:
+  static bool isPoseValid(const Transformation3D& T_W_C);
+  static bool isMeasurementValid(const Point3D& C_end_point);
+
+  static Point3D getEndPointOrMaxRange(const Point3D& W_start_point,
+                                       const Point3D& W_end_point,
+                                       FloatingPoint measured_distance,
+                                       FloatingPoint max_range);
+};
+
+class LieIntegratorBase {
+ public:
+  using Ptr = std::shared_ptr<LieIntegratorBase>;
+
+  LieIntegratorBase() = default;
+  virtual ~LieIntegratorBase() = default;
+
+  virtual void integrate(const PosedImage<>& range_image, const Image<FloatingPoint>& depth_uncertainty_image, const MatrixT<double>& pose_covariance) = 0;
 
  protected:
   static bool isPoseValid(const Transformation3D& T_W_C);

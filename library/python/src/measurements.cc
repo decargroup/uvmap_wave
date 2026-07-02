@@ -37,5 +37,9 @@ void add_measurement_bindings(nb::module_& m) {
   nb::class_<PosedImage<>>(
       m, "PosedImage", "A class to store depth images with an associated pose.")
       .def(nb::init<Transformation3D, Image<>>(), "pose"_a, "image"_a);
+
+  // Matrices
+    // nb::class_<MatrixT<double>>(m, "Matrix", "A class to store matrices of double-precision floats.")
+    //     .def(nb::init<MatrixT<double>>(), "data"_a);
 }
 }  // namespace wavemap

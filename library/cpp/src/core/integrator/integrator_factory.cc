@@ -159,4 +159,86 @@ std::unique_ptr<IntegratorBase> IntegratorFactory::create(
   }
   return nullptr;
 }
+
+// --- LieIntegratorFactory implementation -- //
+
+std::unique_ptr<LieIntegratorBase> LieIntegratorFactory::create(
+    const param::Value& params, MapBase::Ptr occupancy_map,
+    std::shared_ptr<ThreadPool> thread_pool,
+    std::optional<IntegratorType> default_integrator_type) {
+  if (const auto type = IntegratorType::from(params, "integration_method");
+      type) {
+    return create(type.value(), params, std::move(occupancy_map),
+                  std::move(thread_pool));
+  }
+
+  if (default_integrator_type.has_value()) {
+    LOG(WARNING) << "Default type \"" << default_integrator_type.value().toStr()
+                 << "\" will be created instead.";
+    return create(default_integrator_type.value(), params,
+                  std::move(occupancy_map), std::move(thread_pool));
+  }
+
+  LOG(ERROR) << "No default was set. Returning nullptr.";
+  return nullptr;
+}
+
+std::unique_ptr<LieIntegratorBase> LieIntegratorFactory::create(
+    IntegratorType integrator_type, const param::Value& params,
+    MapBase::Ptr occupancy_map, std::shared_ptr<ThreadPool> thread_pool) {
+
+  // Load the projective integrator config
+  const auto integrator_config =
+      ProjectiveIntegratorConfig::from(params, "integration_method");
+  if (!integrator_config.has_value()) {
+    LOG(ERROR) << "Integrator config could not be loaded.";
+    return nullptr;
+  }
+
+  // Create the projection model
+  std::shared_ptr<ProjectorBase> projection_model =
+      ProjectorFactory::create(params);
+  if (!projection_model) {
+    LOG(ERROR) << "Projection model could not be created.";
+    return nullptr;
+  }
+
+  // TODO: is there a better way to initialize HashedChunkedWaveletLieIntegrator and HashedChunkedWaveletIntegrator in the same
+  // switch case? for now, we just zero-initialize all relevant variables here
+  if (integrator_type == IntegratorType::kHashedChunkedWaveletLieIntegrator) {
+    // create the depth & uncertainty images
+    auto posed_depth_image =
+        std::make_shared<PosedImage<>>(projection_model->getDimensions());
+    auto depth_uncertainty_image =
+        std::make_shared<Image<FloatingPoint>>(projection_model->getDimensions());
+    auto pose_covariance =
+        std::make_shared<MatrixT<double>>(6, 6);
+
+    // Create the measurement model
+    std::shared_ptr<MeasurementModelLieBase> measurement_model =
+        MeasurementModelLieFactory::create(params, projection_model,
+                                          posed_depth_image, depth_uncertainty_image, pose_covariance);
+    if (!measurement_model) {
+      LOG(ERROR) << "MeasurementModelLieBase model could not be created.";
+      return nullptr;
+    }
+    auto hashed_chunked_wavelet_map =
+        std::dynamic_pointer_cast<HashedChunkedWaveletOctree>(occupancy_map);
+    if (hashed_chunked_wavelet_map) {
+      return std::make_unique<HashedChunkedWaveletLieIntegrator>(
+          integrator_config.value(), projection_model, posed_depth_image,
+          depth_uncertainty_image, pose_covariance, measurement_model, std::move(hashed_chunked_wavelet_map),
+          std::move(thread_pool));
+    } else {
+      LOG(ERROR) << "Integrator of type " << integrator_type.toStr()
+                 << " only supports data structures of type "
+                 << MapType::toStr(MapType::kHashedChunkedWaveletOctree)
+                 << ". Returning nullptr.";
+    }
+    return nullptr;
+  }
+  LOG(ERROR) << "Attempted to create Lie integrator with unsupported type: "
+             << integrator_type.toStr() << ". Returning nullptr.";
+  return nullptr;
+}
 }  // namespace wavemap

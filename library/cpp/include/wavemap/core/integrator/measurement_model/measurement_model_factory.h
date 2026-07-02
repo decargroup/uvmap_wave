@@ -20,6 +20,23 @@ class MeasurementModelFactory {
       ProjectorBase::ConstPtr projection_model, Image<>::ConstPtr range_image,
       Image<Vector2D>::ConstPtr beam_offset_image, const param::Value& params);
 };
+
+class MeasurementModelLieFactory {
+ public:
+  static std::unique_ptr<MeasurementModelLieBase> create(
+      const param::Value& params, ProjectorBase::ConstPtr projection_model,
+      Image<>::ConstPtr depth_image,
+      Image<FloatingPoint>::ConstPtr depth_uncertainty_image,
+      std::shared_ptr<const MatrixT<double>> pose_covariance,
+      std::optional<MeasurementModelType> default_measurement_model_type =
+          MeasurementModelType::kContinuousLieRay);
+
+  static std::unique_ptr<MeasurementModelLieBase> create(
+      MeasurementModelType measurement_model_type,
+      ProjectorBase::ConstPtr projection_model, Image<>::ConstPtr depth_image,
+      Image<FloatingPoint>::ConstPtr depth_uncertainty_image,
+      std::shared_ptr<const MatrixT<double>> pose_covariance, const param::Value& params);
+};
 }  // namespace wavemap
 
 #endif  // WAVEMAP_CORE_INTEGRATOR_MEASUREMENT_MODEL_MEASUREMENT_MODEL_FACTORY_H_

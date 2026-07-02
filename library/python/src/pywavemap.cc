@@ -53,4 +53,6 @@ NB_MODULE(_pywavemap_bindings, m) {
 
   // Bindings for measurement integration and map update pipelines
   add_pipeline_bindings(m);
+
+  add_underwater_pipeline_bindings(m);
 }

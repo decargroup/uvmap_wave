@@ -26,6 +26,7 @@
 #define WAVEMAP_3RD_PARTY_MINKINDR_COMMON_H_
 
 #include <Eigen/Core>
+#include <Eigen/Dense>
 #include <glog/logging.h>
 
 namespace kindr::minimal {

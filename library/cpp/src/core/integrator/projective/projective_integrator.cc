@@ -97,4 +97,98 @@ void ProjectiveIntegrator::importRangeImage(
   *posed_range_image_ = range_image_input;
   beam_offset_image_->resetToInitialValue();
 }
+
+//  -------------------------------- LieProjectiveIntegrator --------------------------------
+
+
+void LieProjectiveIntegrator::integrate(const PosedImage<>& range_image, const Image<FloatingPoint>& depth_uncertainty_image, const MatrixT<double>& pose_covariance) {
+  ProfilerZoneScoped;
+  CHECK_NOTNULL(projection_model_);
+  if (range_image.getDimensions() != projection_model_->getDimensions()) {
+    LOG(WARNING) << "Dimensions of range image"
+                 << print::eigen::oneLine(range_image.getDimensions())
+                 << " do not match projection model"
+                 << print::eigen::oneLine(projection_model_->getDimensions())
+                 << ". Ignoring integration request.";
+    return;
+  }
+  if (depth_uncertainty_image.getDimensions() !=
+      projection_model_->getDimensions()) {
+    LOG(WARNING)
+        << "Dimensions of depth uncertainty image"
+        << print::eigen::oneLine(depth_uncertainty_image.getDimensions())
+        << " do not match projection model"
+        << print::eigen::oneLine(projection_model_->getDimensions())
+        << ". Ignoring integration request.";
+    return;
+  }
+
+  // check if input covariance matrix is 6x6
+  if (pose_covariance.rows() != 6 || pose_covariance.cols() != 6) {
+    LOG(WARNING) << "Pose covariance matrix must be 6x6. Ignoring integration request.";
+    return;
+  }
+
+  // check if input covariance is positive definite
+  // Eigen::LLT<Eigen::Matrix<double, 6, 6>> llt_of_Eta_xi_ap(pose_covariance);
+  // DCHECK_EQ(llt_of_Eta_xi_ap.info(), Eigen::Success)
+  //     << "Covariance matrix is not positive definite!";
+
+  if (!isPoseValid(range_image.getPose())) {
+    LOG(WARNING) << "Invalid pose for range image. Ignoring integration request.";
+    return;
+  }
+  // LOG(INFO) << "Importing depth image and associated data into LieProjectiveIntegrator.";
+  importDepthImage(range_image);
+  importDepthUncertaintyImage(depth_uncertainty_image);
+  importPoseCovariance(pose_covariance);
+  // LOG(INFO) << "All data imported into LieProjectiveIntegrator, updating map.";
+  updateMap();
+}
+
+void LieProjectiveIntegrator::importDepthImage(
+    const PosedImage<>& depth_image_input) {
+  ProfilerZoneScoped;
+  CHECK_NOTNULL(posed_depth_image_);
+  CHECK_EIGEN_EQ(depth_image_input.getDimensions(),
+                 posed_depth_image_->getDimensions());
+  *posed_depth_image_ = depth_image_input;
+}
+
+void LieProjectiveIntegrator::importDepthUncertaintyImage(
+    const Image<FloatingPoint>& depth_uncertainty_image_input) {
+  ProfilerZoneScoped;
+  CHECK_NOTNULL(depth_uncertainty_image_);
+  CHECK_EIGEN_EQ(depth_uncertainty_image_input.getDimensions(),
+                 depth_uncertainty_image_->getDimensions());
+  *depth_uncertainty_image_ = depth_uncertainty_image_input;
+}
+
+void LieProjectiveIntegrator::importPoseCovariance(
+    const MatrixT<double>& pose_covariance_input) {
+  ProfilerZoneScoped;
+  // CHECK_NOTNULL(pose_covariance_);
+  // CHECK_EIGEN_EQ(pose_covariance_input, pose_covariance_);
+  *pose_covariance_ = pose_covariance_input;
+}
+
+FloatingPoint LieProjectiveIntegrator::computeUpdate(
+    const Point3D& r_pcenterz_c,
+    const Point3D& r_pmaxz_c,
+    const Eigen::Matrix4d& T_ac) const {
+
+  // compute sensor coordinates of the point
+  const auto sensor_coordinates =
+      projection_model_->cartesianToSensor(r_pcenterz_c);
+
+  // Check if we're outside the min/max range, this will also make sure that the depth is valid
+  if (sensor_coordinates.depth < config_.min_range ||
+      config_.max_range < sensor_coordinates.depth) {
+    return 0.f;
+  }
+
+  // return measurement_model_->computeUpdate(delta_xi_ap, T_cp_tilde, sensor_coordinates);
+  return measurement_model_->computeUpdate(sensor_coordinates, r_pcenterz_c, r_pmaxz_c, T_ac);
+}
+
 }  // namespace wavemap

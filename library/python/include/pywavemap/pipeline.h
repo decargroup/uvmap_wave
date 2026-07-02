@@ -7,6 +7,7 @@ namespace nb = nanobind;
 
 namespace wavemap {
 void add_pipeline_bindings(nb::module_& m);
+void add_underwater_pipeline_bindings(nb::module_& m);
 }  // namespace wavemap
 
 #endif  // PYWAVEMAP_PIPELINE_H_

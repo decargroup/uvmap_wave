@@ -121,6 +121,10 @@ class HashedWaveletOctree : public MapBase {
   BlockIndex indexToBlockIndex(const OctreeIndex& node_index) const;
   CellIndex indexToCellIndex(OctreeIndex index) const;
 
+  // helper function to return pointcloud of all occupied cells
+  Eigen::Matrix3Xf getOccupiedCellsPointcloud(
+      FloatingPoint occupancy_threshold_log_odds) const;
+
  private:
   const HashedWaveletOctreeConfig config_;
   const IndexElement cells_per_block_side_ =

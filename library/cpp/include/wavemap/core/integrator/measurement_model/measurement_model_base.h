@@ -13,10 +13,10 @@ namespace wavemap {
 struct MeasurementModelType : TypeSelector<MeasurementModelType> {
   using TypeSelector<MeasurementModelType>::TypeSelector;
 
-  enum Id : TypeId { kConstantRay, kContinuousRay, kContinuousBeam };
+  enum Id : TypeId { kConstantRay, kContinuousRay, kContinuousBeam, kContinuousLieRay };
 
   static constexpr std::array names = {"constant_ray", "continuous_ray",
-                                       "continuous_beam"};
+                                       "continuous_beam", "continuous_lie_ray"};
 };
 
 struct BeamSelectorType : TypeSelector<BeamSelectorType> {
@@ -44,6 +44,41 @@ class MeasurementModelBase {
 
   virtual FloatingPoint computeUpdate(
       const SensorCoordinates& sensor_coordinates) const = 0;
+};
+
+class MeasurementModelLieBase {
+ public:
+  using Ptr = std::shared_ptr<MeasurementModelLieBase>;
+  using ConstPtr = std::shared_ptr<const MeasurementModelLieBase>;
+
+  virtual ~MeasurementModelLieBase() = default;
+
+  virtual FloatingPoint getPaddingAngle() const = 0;
+  virtual FloatingPoint getPaddingSurfaceFront() const = 0;
+  virtual FloatingPoint getPaddingSurfaceBack() const = 0;
+
+  // virtual FloatingPoint computeWorstCaseApproximationError(
+  //     UpdateType update_type, FloatingPoint cell_to_sensor_distance,
+  //     FloatingPoint cell_bounding_radius) const = 0;
+
+  virtual bool computeWorstCaseApproximationError(
+      const SensorCoordinates& sensor_coordinates,
+      const Point3D& r_pcenterz_c,
+      const Point3D& r_pmaxz_c,
+      const Point3D& r_pminz_c,
+      const Eigen::Matrix4d& T_ac,
+      UpdateType update_type,
+      FloatingPoint bounding_sphere_radius) const = 0;
+
+//   virtual FloatingPoint computeUpdate(
+//       const SensorCoordinates& sensor_coordinates,
+//       const Eigen::Matrix4d& T_ac) const = 0;
+
+  virtual FloatingPoint computeUpdate(
+      const SensorCoordinates& sensor_coordinates,
+      const Point3D& r_pcenterz_c,
+      const Point3D& r_pmaxz_c,
+      const Eigen::Matrix4d& T_ac) const = 0;
 };
 }  // namespace wavemap
 

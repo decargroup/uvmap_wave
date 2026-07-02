@@ -21,6 +21,18 @@ class IntegratorFactory {
       MapBase::Ptr occupancy_map,
       std::shared_ptr<ThreadPool> thread_pool = nullptr);
 };
+class LieIntegratorFactory {
+ public:
+  static std::unique_ptr<LieIntegratorBase> create(
+      const param::Value& params, MapBase::Ptr occupancy_map,
+      std::shared_ptr<ThreadPool> thread_pool = nullptr,
+      std::optional<IntegratorType> default_integrator_type = std::nullopt);
+
+  static std::unique_ptr<LieIntegratorBase> create(
+      IntegratorType integrator_type, const param::Value& params,
+      MapBase::Ptr occupancy_map,
+      std::shared_ptr<ThreadPool> thread_pool = nullptr);
+};
 }  // namespace wavemap
 
 #endif  // WAVEMAP_CORE_INTEGRATOR_INTEGRATOR_FACTORY_H_

@@ -160,4 +160,186 @@ void HashedChunkedWaveletIntegrator::updateNodeRecursive(  // NOLINT
   node_details = new_details;
   node_value = new_value;
 }
+
+// ---------------------------------------------------------------------------
+
+void HashedChunkedWaveletLieIntegrator::updateMap() {
+  ProfilerZoneScoped;
+  // Update the range image intersector
+  {
+    ProfilerZoneScopedN("updateRangeImageLieIntersector");
+    range_image_intersector_ = std::make_shared<RangeImageLieIntersector>(
+        posed_depth_image_, depth_uncertainty_image_, pose_covariance_, projection_model_, *measurement_model_,
+        config_.min_range, config_.max_range);
+  }
+
+  // Log to debug
+  // LOG(INFO) << "Range image intersector updated";
+
+  // Find all the indices of blocks that need updating
+  BlockList blocks_to_update;
+  {
+    ProfilerZoneScopedN("selectBlocksToUpdate");
+    const auto [fov_min_idx, fov_max_idx] =
+        getFovMinMaxIndices(posed_depth_image_->getOrigin());
+    // LOG(INFO) << "Found FOV min/max indices" << fov_min_idx.toString() << " / " << fov_max_idx.toString();
+    for (const auto& block_index :
+         Grid(fov_min_idx.position, fov_max_idx.position)) {
+      recursiveTester(OctreeIndex{fov_min_idx.height, block_index},
+                      blocks_to_update);
+    }
+  }
+
+  // Log to debug
+  // LOG(INFO) << "Found blocks to update: " << blocks_to_update.size();
+
+  // Make sure the to-be-updated blocks are allocated
+  for (const auto& block_index : blocks_to_update) {
+    occupancy_map_->getOrAllocateBlock(block_index);
+  }
+
+  // Update it with the threadpool
+  for (const auto& block_index : blocks_to_update) {
+    thread_pool_->add_task([this, block_index]() {
+      if (auto* block = occupancy_map_->getBlock(block_index); block) {
+        updateBlock(*block, block_index);
+      }
+    });
+  }
+  thread_pool_->wait_all();
+}
+
+std::pair<OctreeIndex, OctreeIndex>
+HashedChunkedWaveletLieIntegrator::getFovMinMaxIndices(
+    const Point3D& sensor_origin) const {
+  const int height = 1 + std::max(static_cast<int>(std::ceil(std::log2(
+                                      config_.max_range / min_cell_width_))),
+                                  tree_height_);
+  const OctreeIndex fov_min_idx = convert::indexAndHeightToNodeIndex<3>(
+      convert::pointToFloorIndex<3>(
+          sensor_origin - Vector3D::Constant(config_.max_range),
+          min_cell_width_inv_) -
+          occupancy_map_->getBlockSize(),
+      height);
+  const OctreeIndex fov_max_idx = convert::indexAndHeightToNodeIndex<3>(
+      convert::pointToCeilIndex<3>(
+          sensor_origin + Vector3D::Constant(config_.max_range),
+          min_cell_width_inv_) +
+          occupancy_map_->getBlockSize(),
+      height);
+  return {fov_min_idx, fov_max_idx};
+}
+
+void HashedChunkedWaveletLieIntegrator::updateBlock(
+    HashedChunkedWaveletOctree::Block& block,
+    const HashedChunkedWaveletOctree::BlockIndex& block_index) {
+  ProfilerZoneScoped;
+  block.setNeedsPruning();
+  block.setLastUpdatedStamp();
+
+  bool block_needs_thresholding = block.getNeedsThresholding();
+  const OctreeIndex root_node_index{tree_height_, block_index};
+  updateNodeRecursive(block.getRootNode(), root_node_index,
+                      block.getRootScale(), block_needs_thresholding);
+  block.setNeedsThresholding(block_needs_thresholding);
+}
+
+void HashedChunkedWaveletLieIntegrator::updateNodeRecursive(  // NOLINT
+    HashedChunkedWaveletLieIntegrator::OctreeType::NodeRefType node,
+    const OctreeIndex& node_index, FloatingPoint& node_value,
+    bool& block_needs_thresholding) {
+  // Decompress child values
+  auto& node_details = node.data();
+  auto child_values = HashedChunkedWaveletOctreeBlock::Transform::backward(
+      {node_value, node_details});
+
+  // Handle each child
+  for (NdtreeIndexRelativeChild relative_child_idx = 0;
+       relative_child_idx < OctreeIndex::kNumChildren; ++relative_child_idx) {
+    const OctreeIndex child_index =
+        node_index.computeChildIndex(relative_child_idx);
+    FloatingPoint& child_value = child_values[relative_child_idx];
+
+    // Test whether it is fully occupied; free or unknown; or fully unknown
+    const AABB<Point3D> W_child_aabb =
+        convert::nodeIndexToAABB(child_index, min_cell_width_);
+    
+    // LOG(In) << "Determining update type for child at index: ";
+    // LOG(INFO) << "Determining update type for cell";
+    const UpdateType update_type =
+        range_image_intersector_->determineUpdateType(
+            W_child_aabb, posed_depth_image_->getRotationMatrixInverse(),
+            posed_depth_image_->getOrigin());
+
+    // If we're fully in unknown space,
+    // there's no need to evaluate this node or its children
+    if (update_type == UpdateType::kFullyUnobserved) {
+      continue;
+    }
+
+    // We can also stop here if the cell will result in a free space update
+    // (or zero) and the map is already saturated free
+    if (update_type != UpdateType::kPossiblyOccupied &&
+        child_value < min_log_odds_shrunk_) {
+      continue;
+    }
+
+    // Log the update type
+    // LOG(WARNING) << "Determined update type for child at index: " << child_index.toString() << " is " << update_type;
+
+    // Test if the worst-case error for the intersection type at the current
+    // resolution falls within the acceptable approximation error
+    const FloatingPoint child_width = W_child_aabb.width<0>();
+    const Point3D W_child_center =
+        W_child_aabb.min + Vector3D::Constant(child_width / 2.f);
+    const Point3D C_child_center =
+        posed_depth_image_->getPoseInverse() * W_child_center;
+    const Point3D C_child_corner_max =
+        posed_depth_image_->getPoseInverse() * W_child_aabb.max;
+    const Point3D C_child_corner_min =
+        posed_depth_image_->getPoseInverse() * W_child_aabb.min;
+    // const FloatingPoint d_C_child =
+    //     projection_model_->cartesianToSensorZ(C_child_center);
+    const FloatingPoint bounding_sphere_radius =
+        kUnitCubeHalfDiagonal * child_width;
+
+    // retrieve sensor coordinate of reprojected depth image
+    const auto sensor_coordinates =
+        projection_model_->cartesianToSensor(C_child_center);
+
+    // TODO: for now, run without this for maximum accuracy
+    if (update_type == UpdateType::kFullyFree || update_type == UpdateType::kFullyUnobserved) {
+    // if(measurement_model_->computeWorstCaseApproximationError(sensor_coordinates, C_child_center, C_child_corner_max, C_child_corner_min, posed_depth_image_->getPose().getTransformationMatrix().cast<double>(), update_type, bounding_sphere_radius)) {
+      // LOG(WARNING) << "Running update for child at index: " << child_index.toString();
+      const FloatingPoint sample = computeUpdate(C_child_center, C_child_corner_max, posed_depth_image_->getPose().getTransformationMatrix().cast<double>());
+      child_value += sample;
+      block_needs_thresholding = true;
+      continue;
+    }
+
+    // LOG(WARNING) << "Refining child at index: " << child_index.toString();
+
+    // Since the approximation error would still be too big, refine
+    auto child_node = node.getOrAllocateChild(relative_child_idx);
+    auto& child_details = child_node.data();
+
+    // If we're at the leaf level, directly compute the update
+    if (child_index.height <= termination_height_ + 1) {
+      // LOG(WARNING) << "Updated child at index: " << child_index.toString();
+      updateLeavesBatch(child_index, child_value, child_details);
+    } else {
+      // Otherwise, recurse
+      DCHECK_GE(child_index.height, 0);
+      // LOG(WARNING) << "Recursing into child at index: " << child_index.toString();
+      updateNodeRecursive(child_node, child_index, child_value,
+                          block_needs_thresholding);
+    }
+  }
+
+  // Compress
+  const auto [new_value, new_details] =
+      HashedChunkedWaveletOctreeBlock::Transform::forward(child_values);
+  node_details = new_details;
+  node_value = new_value;
+}
 }  // namespace wavemap

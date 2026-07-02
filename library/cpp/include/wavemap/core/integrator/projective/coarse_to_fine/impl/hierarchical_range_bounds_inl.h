@@ -257,6 +257,7 @@ inline bool HierarchicalRangeBounds::hasUnobserved(
 inline UpdateType HierarchicalRangeBounds::getUpdateType(
     const Index2D& min_image_idx, const Index2D& max_image_idx,
     FloatingPoint range_min, FloatingPoint range_max) const {
+  // LOG(INFO) << "Getting update type for image indices: ";
   const Index2D min_image_idx_clamped = min_image_idx.cwiseMax(0);
   const Index2D max_image_idx_clamped =
       max_image_idx.cwiseMin(range_image_->getDimensions() - Index2D::Ones());
@@ -264,16 +265,20 @@ inline UpdateType HierarchicalRangeBounds::getUpdateType(
   const Bounds distance_bounds =
       getBounds(min_image_idx_clamped, max_image_idx_clamped);
   if (distance_bounds.upper < range_min) {
+    // LOG(INFO) << "Distance bounds fully unobserved: ";
     return UpdateType::kFullyUnobserved;
   } else if (range_max < distance_bounds.lower) {
     if (min_image_idx != min_image_idx_clamped ||
         max_image_idx != max_image_idx_clamped ||
         hasUnobserved(min_image_idx_clamped, max_image_idx_clamped)) {
+      // LOG(INFO) << "Distance bounds free or unobserved: ";
       return UpdateType::kFreeOrUnobserved;
     } else {
+      // LOG(INFO) << "Distance bounds fully free: ";
       return UpdateType::kFullyFree;
     }
   } else {
+    // LOG(INFO) << "Distance bounds possibly occupied: ";
     return UpdateType::kPossiblyOccupied;
   }
 }

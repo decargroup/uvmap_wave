@@ -2,6 +2,7 @@
 #define WAVEMAP_CORE_MAP_IMPL_HASHED_WAVELET_OCTREE_INL_H_
 
 #include "wavemap/core/indexing/index_conversions.h"
+#include <wavemap/core/utils/iterate/grid_iterator.h>
 
 namespace wavemap {
 inline size_t HashedWaveletOctree::size() const {
@@ -108,6 +109,76 @@ inline HashedWaveletOctree::CellIndex HashedWaveletOctree::indexToCellIndex(
       int_math::div_exp2_floor_remainder(index.position, height_difference);
   return index;
 }
+
+inline Eigen::Matrix3Xf HashedWaveletOctree::getOccupiedCellsPointcloud(
+    FloatingPoint occupancy_threshold_log_odds) const {
+  std::vector<Point3D> pointcloud_vec;
+
+  // If the map is empty, there's no work to do
+  if (this->empty()) {
+    return Eigen::Matrix3Xf(3, 0);
+  }
+
+  // Define a functor that converts map leaf nodes into pointcloud_vec points
+  auto add_points_for_leaf_node =
+      [min_cell_width = this->getMinCellWidth(),
+       occupancy_threshold = occupancy_threshold_log_odds,
+       &pointcloud_vec](
+          const OctreeIndex& node_index, FloatingPoint node_log_odds) {
+        if (occupancy_threshold < node_log_odds) {
+          if (node_index.height == 0) {
+            const Point3D center = convert::indexToCenterPoint(
+                node_index.position, min_cell_width);
+            pointcloud_vec.emplace_back(center);
+          } 
+          else {
+            const Index3D node_min_corner =
+                convert::nodeIndexToMinCornerIndex(node_index);
+            const Index3D node_max_corner =
+                convert::nodeIndexToMaxCornerIndex(node_index);
+            for (const Index3D& index :
+                 Grid(node_min_corner, node_max_corner)) {
+              const Point3D center =
+                  convert::indexToCenterPoint(index, min_cell_width);
+              pointcloud_vec.emplace_back(center);
+            }
+          }
+        }
+      };
+
+  // Define a functor that allows us to skip unchanged map blocks
+  auto process_block_if_changed = [this, &add_points_for_leaf_node](
+                                      const Index3D& block_index,
+                                      const auto& block) {    
+    // here, we want to process all blocks regardless of whether they have changed
+    block.forEachLeaf(block_index, add_points_for_leaf_node);
+  };
+
+  // Iterate over the map
+  // if (const auto* hashed_wavelet_octree =
+  //         dynamic_cast<const HashedWaveletOctree*>(occupancy_map_.get());
+  //     hashed_wavelet_octree) {
+  //   hashed_wavelet_octree->forEachBlock(process_block_if_changed);
+  // } else if (const auto* hashed_chunked_wavelet_octree =
+  //                dynamic_cast<const HashedChunkedWaveletOctree*>(
+  //                    occupancy_map_.get());
+  //            hashed_chunked_wavelet_octree) {
+  //   hashed_chunked_wavelet_octree->forEachBlock(process_block_if_changed);
+  // } else {  // Fallback for non-hashed map types: simply process all leaves
+  //   occupancy_map_->forEachLeaf(add_points_for_leaf_node);
+  // }
+  this->forEachBlock(process_block_if_changed);
+
+  // convert vector of 3D points to a Eigen::Matrix3Xd pointcloud
+  Eigen::Matrix3Xf pointcloud(3, pointcloud_vec.size());
+  for (size_t i = 0; i < pointcloud_vec.size(); ++i) {
+    pointcloud.col(i) = pointcloud_vec[i];
+  }
+
+  // Publish the msg
+  return pointcloud;
+}
+
 }  // namespace wavemap
 
 #endif  // WAVEMAP_CORE_MAP_IMPL_HASHED_WAVELET_OCTREE_INL_H_

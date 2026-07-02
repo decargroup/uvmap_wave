@@ -3,6 +3,8 @@
 
 #include <memory>
 #include <utility>
+#include <Eigen/Eigen>
+#include <iostream>
 
 #include "wavemap/core/config/type_selector.h"
 #include "wavemap/core/data_structure/image.h"
@@ -10,6 +12,7 @@
 #include "wavemap/core/integrator/measurement_model/measurement_model_base.h"
 #include "wavemap/core/integrator/projection_model/projector_base.h"
 #include "wavemap/core/map/map_base.h"
+#include "wavemap/3rd_party/pymlg/liegroups.h"
 
 namespace wavemap {
 /**
@@ -96,6 +99,69 @@ class ProjectiveIntegrator : public IntegratorBase {
   virtual void updateMap() = 0;
 
   FloatingPoint computeUpdate(const Point3D& C_cell_center) const;
+};
+
+class LieProjectiveIntegrator : public LieIntegratorBase {
+ public:
+  using Ptr = std::shared_ptr<LieProjectiveIntegrator>;
+
+  explicit LieProjectiveIntegrator(
+      const ProjectiveIntegratorConfig& config,
+      ProjectorBase::ConstPtr projection_model,
+      PosedImage<>::Ptr posed_depth_image,
+      Image<FloatingPoint>::Ptr depth_uncertainty_image,
+      std::shared_ptr<MatrixT<double>> pose_covariance,
+      MeasurementModelLieBase::ConstPtr measurement_model)
+      : config_(config.checkValid()),
+        projection_model_(std::move(CHECK_NOTNULL(projection_model))),
+        posed_depth_image_(std::move(CHECK_NOTNULL(posed_depth_image))),
+        depth_uncertainty_image_(std::move(CHECK_NOTNULL(depth_uncertainty_image))),
+        pose_covariance_(std::move(CHECK_NOTNULL(pose_covariance))),
+        measurement_model_(std::move(CHECK_NOTNULL(measurement_model))) {}
+
+  // Methods to integrate new pointclouds / depth images into the map
+  void integrate(const PosedImage<>& range_image, const Image<FloatingPoint>& depth_uncertainty_image, const MatrixT<double>& pose_covariance) override;
+
+  // Accessors for debugging and visualization
+  // NOTE: These accessors are for introspection only, not for modifying the
+  //       internal state. They therefore only expose const references or
+  //       pointers to const.
+  const MeasurementModelLieBase::ConstPtr& getMeasurementModel() const {
+    return measurement_model_;
+  }
+  ProjectorBase::ConstPtr getProjectionModel() const {
+    return projection_model_;
+  }
+  PosedImage<>::ConstPtr getPosedDepthImage() const {
+    return posed_depth_image_;
+  }
+  Image<FloatingPoint>::ConstPtr getDepthUncertaintyImage() const {
+    return depth_uncertainty_image_;
+  }
+  std::shared_ptr<const MatrixT<double>> getPoseCovariance() const {
+    return pose_covariance_;
+  }
+
+ protected:
+  const ProjectiveIntegratorConfig config_;
+
+  const ProjectorBase::ConstPtr projection_model_;
+  const PosedImage<>::Ptr posed_depth_image_;
+  const Image<FloatingPoint>::Ptr depth_uncertainty_image_;
+  const std::shared_ptr<MatrixT<double>> pose_covariance_;
+
+  const MeasurementModelLieBase::ConstPtr measurement_model_;
+
+  // virtual void importPointcloud(const PosedPointcloud<>& pointcloud);
+  // virtual void importRangeImage(const PosedImage<>& range_image_input);
+  virtual void importDepthImage(const PosedImage<>& depth_image_input);
+  virtual void importDepthUncertaintyImage(const Image<FloatingPoint>& depth_uncertainty_image_input);
+  virtual void importPoseCovariance(const MatrixT<double>& pose_covariance_input);
+
+  virtual void updateMap() = 0;
+
+  FloatingPoint computeUpdate(const Point3D& C_cell_center, const Point3D& C_cell_max_corner,
+    const Eigen::Matrix4d& T_wc) const;
 };
 }  // namespace wavemap
 

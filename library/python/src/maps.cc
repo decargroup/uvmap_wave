@@ -113,6 +113,11 @@ void add_map_bindings(nb::module_& m) {
       "A class that stores maps using hashed wavelet octrees.")
       .def("get_cell_value", &MapBase::getCellValue, "index"_a,
            "Query the value of the map at a given index.")
+      .def("get_occupied_cells_pointcloud",
+           &HashedWaveletOctree::getOccupiedCellsPointcloud,
+           "occupancy_threshold"_a,
+           "Get a point cloud of all occupied cells above the given occupancy "
+           "threshold.")
       .def("get_cell_value",
            nb::overload_cast<const OctreeIndex&>(
                &HashedWaveletOctree::getCellValue, nb::const_),
@@ -252,6 +257,11 @@ void add_map_bindings(nb::module_& m) {
                &HashedChunkedWaveletOctree::getCellValue, nb::const_),
            "node_index"_a,
            "Query the value of the map at a given octree node index.")
+      .def("get_occupied_cells_pointcloud",
+           &HashedChunkedWaveletOctree::getOccupiedCellsPointcloud,
+           "occupancy_threshold"_a,
+           "Get a point cloud of all occupied cells above the given occupancy "
+           "threshold.")
       .def(
           "get_cell_values",
           [](const HashedChunkedWaveletOctree& self,

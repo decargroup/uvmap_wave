@@ -3,11 +3,13 @@
 
 #include <memory>
 #include <utility>
+// #include <Eigen/src/Cholesky/LLT.h>
 
 #include "wavemap/core/common.h"
 #include "wavemap/core/config/config_base.h"
 #include "wavemap/core/integrator/measurement_model/measurement_model_base.h"
 #include "wavemap/core/integrator/projective/update_type.h"
+#include "wavemap/3rd_party/pymlg/se3.h"
 
 namespace wavemap {
 /**
@@ -89,6 +91,80 @@ class ContinuousRay : public MeasurementModelBase {
   // NOTE: Using this method is optional. It's slightly cheaper and more
   // accurate, but the difference is minor.
   FloatingPoint computeFreeSpaceBeamUpdate() const;
+};
+
+// ----------------------------------------------------------------------------
+
+class LieContinuousRay : public MeasurementModelLieBase {
+ public:
+  explicit LieContinuousRay(const ContinuousRayConfig& config,
+                          ProjectorBase::ConstPtr projection_model,
+                          Image<>::ConstPtr depth_image,
+                          Image<FloatingPoint>::ConstPtr depth_uncertainty_image,
+                          std::shared_ptr<const MatrixT<double>> pose_covariance)
+      : config_(config.checkValid()),
+        projection_model_(std::move(projection_model)),
+        depth_image_(std::move(depth_image)),
+        depth_uncertainty_image_(std::move(depth_uncertainty_image)),
+        pose_covariance_(std::move(pose_covariance)) {}
+
+  const ContinuousRayConfig& getConfig() const { return config_; }
+  FloatingPoint getPaddingAngle() const override { return 0.f; }
+  FloatingPoint getPaddingSurfaceFront() const override {
+    return range_threshold_front_;
+  }
+  FloatingPoint getPaddingSurfaceBack() const override {
+    return range_threshold_back_;
+  }
+
+  // FloatingPoint computeWorstCaseApproximationError(
+  //     UpdateType update_type, FloatingPoint cell_to_sensor_distance,
+  //     FloatingPoint cell_bounding_radius) const override;
+
+  bool computeWorstCaseApproximationError(
+      const SensorCoordinates& sensor_coordinates,
+      const Point3D& r_pcenterz_c,
+      const Point3D& r_pmaxz_c,
+      const Point3D& r_pminz_c,
+      const Eigen::Matrix4d& T_ac,
+      UpdateType update_type,
+      FloatingPoint bounding_sphere_radius) const override;
+
+  FloatingPoint computeUpdate(
+      const SensorCoordinates& sensor_coordinates,
+      const Point3D& r_pcenterz_c,
+      const Point3D& r_pmaxz_c,
+      const Eigen::Matrix4d& T_ac) const override;
+
+ private:
+  const ContinuousRayConfig config_;
+
+  const ProjectorBase::ConstPtr projection_model_;
+  const Image<>::ConstPtr depth_image_;
+  const Image<FloatingPoint>::ConstPtr depth_uncertainty_image_;
+  // const MatrixT<FloatingPoint>::ConstPtr pose_covariance_;
+  const std::shared_ptr<const MatrixT<double>> pose_covariance_;
+
+  const FloatingPoint range_threshold_front_ = 3.f * config_.range_sigma;
+  const FloatingPoint range_threshold_back_ = 6.f * config_.range_sigma;
+  // NOTE: The upper range thresholds has a width of 6 sigmas because the
+  //       assumed 'ground truth' surface thickness is 3 sigma, and the range
+  //       uncertainty extends the non-zero regions with another 3 sigma.
+  FloatingPoint computeBeamUpdate(const Index2D& image_index, const SensorCoordinates& sensor_coordinates, const Eigen::Matrix4d& T_ac, const Point3D& r_pcenterz_c, const Point3D& r_pmaxz_c) const;
+
+  // Compute the full measurement update, i.e. valid anywhere
+  FloatingPoint computeFullBeamUpdate(const Eigen::Matrix<double, 6, 1>& delta_xi_ap, const Eigen::Matrix<double, 6, 6>& Eta_xi_ap) const;
+
+  // full covariance helper
+  Eigen::Matrix<double, 6, 6> getFullCovarianceMatrix(const Index2D& image_index, const Eigen::Matrix4d& T_cp_tilde, const Eigen::Matrix4d& T_ac, const Eigen::Vector3d& u_pz_c) const;
+
+  // Compute the measurement update given that we're fully in free space, i.e.
+  // only in the interval [ 0, measured_distance - range_threshold_in_front [
+  // NOTE: Using this method is optional. It's slightly cheaper and more
+  // accurate, but the difference is minor.
+  FloatingPoint computeFreeSpaceBeamUpdate() const;
+
+  Eigen::Matrix4d compute_gram_schmidt(const Point3D& r_pz_c) const;
 };
 }  // namespace wavemap
 
