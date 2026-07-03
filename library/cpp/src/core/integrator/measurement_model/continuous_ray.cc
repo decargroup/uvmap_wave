@@ -357,20 +357,18 @@ FloatingPoint LieContinuousRay::computeBeamUpdate(
     }
 
     // now, check if we are within the bounds for every dimension aside from depth
-    FloatingPoint mahalanobis_distance_no_depth = std::sqrt(
-      delta_x_pa.head<5>().transpose() *
-      Eta_x_pa_inv.topLeftCorner<5,5>() *
-      delta_x_pa.head<5>());
+    // FloatingPoint mahalanobis_distance_no_depth = std::sqrt(
+    //   delta_x_pa.head<5>().transpose() *
+    //   Eta_x_pa_inv.topLeftCorner<5,5>() *
+    //   delta_x_pa.head<5>());
 
-    if (mahalanobis_distance_no_depth < 3.65f) {  // 3.65 is the chi2inv(0.9973, 5) value
+    if (true) {  // 3.65 is the chi2inv(0.9973, 5) value
       // we are within bounds for all but depth, return free space update if delta_x_pa(5) < 0
       if (delta_x_pa(5) < 0.f) {
         // return computeFreeSpaceBeamUpdate();
         return computeFullBeamUpdate(delta_x_pa, Eta_x_pa);
       }
     }
-
-    // now, check for the "best-case" update, where the 3
 
     // else, we are outside the bounds or behind the surface, return 0 update
     return 0.f;
@@ -427,7 +425,7 @@ FloatingPoint LieContinuousRay::computeFullBeamUpdate(
   double support_fac = 1.0;
 
   // based on a maximum depth of voxel_res * 12, as per supereight2
-  const double max_depth_sigma = .01 * 12;
+  const double max_depth_sigma = .025 * 12;
 
   const double depth_sigma = std::sqrt(diag_Eta_xi_ap(5));
   support_fac = std::min(1.0, max_depth_sigma / depth_sigma);
@@ -437,7 +435,7 @@ FloatingPoint LieContinuousRay::computeFullBeamUpdate(
       (delta_xi_ap(5)) / std::sqrt(diag_Eta_xi_ap(5));
   double scaled_contrib =
       ApproximateGaussianDistribution::cumulative(f_depth) -
-      0.5f * ApproximateGaussianDistribution::cumulative(f_depth - 3.f * support_fac) - 0.5f;
+      0.5f * ApproximateGaussianDistribution::cumulative(f_depth - 3.f) - 0.5f;
   // double scaled_contrib = 1.f;
 
   // now, iterate through the other elements to compute the other contributions using C(g + 3.f) - C(g - 3.f)
@@ -449,7 +447,7 @@ FloatingPoint LieContinuousRay::computeFullBeamUpdate(
 
     // if i is {0, 1, 2}, then define the maximum angular sigma as 5 degrees
     if (i < 3) {
-      const double max_angular_sigma = 1.f * M_PI / 180.f; // 5 degrees in radians
+      const double max_angular_sigma = .1f * M_PI / 180.f; // 5 degrees in radians
       const double angle_sigma = std::sqrt(diag_Eta_xi_ap(i));
 
       support_fac = std::min(1.0, max_angular_sigma / angle_sigma);
