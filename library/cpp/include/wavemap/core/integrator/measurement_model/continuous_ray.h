@@ -153,7 +153,7 @@ class LieContinuousRay : public MeasurementModelLieBase {
   FloatingPoint computeBeamUpdate(const Index2D& image_index, const SensorCoordinates& sensor_coordinates, const Eigen::Matrix4d& T_ac, const Point3D& r_pcenterz_c, const Point3D& r_pmaxz_c) const;
 
   // Compute the full measurement update, i.e. valid anywhere
-  FloatingPoint computeFullBeamUpdate(const Eigen::Matrix<double, 6, 1>& delta_xi_ap, const Eigen::Matrix<double, 6, 6>& Eta_xi_ap) const;
+  FloatingPoint computeFullBeamUpdate(const Eigen::Matrix<double, 6, 1>& delta_xi_ap, const Eigen::Matrix<double, 6, 6>& Eta_xi_ap, FloatingPoint d_p) const;
 
   // full covariance helper
   Eigen::Matrix<double, 6, 6> getFullCovarianceMatrix(const Index2D& image_index, const Eigen::Matrix4d& T_cp_tilde, const Eigen::Matrix4d& T_ac, const Eigen::Vector3d& u_pz_c) const;

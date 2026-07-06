@@ -322,10 +322,10 @@ FloatingPoint LieContinuousRay::computeBeamUpdate(
   // first, check if we are behind the mean endpoint, if so, return 0 update
 
   // first, check if delta_x_pa is within the bounds of the endpoint uncertainty
-  if (mahalanobis_distance < 4.48f) {  // 4.48 is the chi2inv(0.9973, 6) value
+  if (mahalanobis_distance <= 4.48f) {  // 4.48 is the chi2inv(0.9973, 6) value
 
     //if so, compute the full beam update
-    FloatingPoint sample_update = computeFullBeamUpdate(delta_x_pa, Eta_x_pa);
+    FloatingPoint sample_update = computeFullBeamUpdate(delta_x_pa, Eta_x_pa, d_p);
 
     return sample_update;
   }
@@ -357,16 +357,16 @@ FloatingPoint LieContinuousRay::computeBeamUpdate(
     }
 
     // now, check if we are within the bounds for every dimension aside from depth
-    // FloatingPoint mahalanobis_distance_no_depth = std::sqrt(
-    //   delta_x_pa.head<5>().transpose() *
-    //   Eta_x_pa_inv.topLeftCorner<5,5>() *
-    //   delta_x_pa.head<5>());
+    FloatingPoint mahalanobis_distance_no_depth = std::sqrt(
+      delta_x_pa.head<5>().transpose() *
+      Eta_x_pa_inv.topLeftCorner<5,5>() *
+      delta_x_pa.head<5>());
 
-    if (true) {  // 3.65 is the chi2inv(0.9973, 5) value
+    if (mahalanobis_distance_no_depth <= 3.65f) {  // 3.65 is the chi2inv(0.9973, 5) value
       // we are within bounds for all but depth, return free space update if delta_x_pa(5) < 0
       if (delta_x_pa(5) < 0.f) {
         // return computeFreeSpaceBeamUpdate();
-        return computeFullBeamUpdate(delta_x_pa, Eta_x_pa);
+        return computeFullBeamUpdate(delta_x_pa, Eta_x_pa, d_p);
       }
     }
 
@@ -416,7 +416,8 @@ Eigen::Matrix<double, 6, 6> LieContinuousRay::getFullCovarianceMatrix(const Inde
 
 FloatingPoint LieContinuousRay::computeFullBeamUpdate(
     const Eigen::Matrix<double, 6, 1>& delta_xi_ap,
-    const Eigen::Matrix<double, 6, 6>& Eta_xi_ap) const {
+    const Eigen::Matrix<double, 6, 6>& Eta_xi_ap,
+    FloatingPoint d_p) const {
 
   // now, retrieve diagonal elements of the full covariance as a vector
   const Eigen::Matrix<double, 1, 6> diag_Eta_xi_ap =
@@ -435,7 +436,7 @@ FloatingPoint LieContinuousRay::computeFullBeamUpdate(
       (delta_xi_ap(5)) / std::sqrt(diag_Eta_xi_ap(5));
   double scaled_contrib =
       ApproximateGaussianDistribution::cumulative(f_depth) -
-      0.5f * ApproximateGaussianDistribution::cumulative(f_depth - 3.f) - 0.5f;
+      0.5f * ApproximateGaussianDistribution::cumulative(f_depth - 3.f * support_fac) - 0.5f;
   // double scaled_contrib = 1.f;
 
   // now, iterate through the other elements to compute the other contributions using C(g + 3.f) - C(g - 3.f)
@@ -447,7 +448,10 @@ FloatingPoint LieContinuousRay::computeFullBeamUpdate(
 
     // if i is {0, 1, 2}, then define the maximum angular sigma as 5 degrees
     if (i < 3) {
-      const double max_angular_sigma = .1f * M_PI / 180.f; // 5 degrees in radians
+      // const double max_angular_sigma = .1f * M_PI / 180.f; // 5 degrees in radians
+
+      // compute the maximum angular sigma from the depth based on a desired opposite edge length of 0.01 meters, i.e. max_angular_sigma = atan(0.01 / d_p)
+      const double max_angular_sigma = std::atan2(0.005, d_p);
       const double angle_sigma = std::sqrt(diag_Eta_xi_ap(i));
 
       support_fac = std::min(1.0, max_angular_sigma / angle_sigma);
