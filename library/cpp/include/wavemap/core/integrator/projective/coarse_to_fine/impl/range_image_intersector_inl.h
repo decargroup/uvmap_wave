@@ -134,17 +134,14 @@ inline UpdateType RangeImageLieIntersector::determineUpdateType(
       max_image_index.cwiseMin(
           depth_uncertainty_image_->getDimensions() - Index2D::Ones());
     
-  // retrieve norm of translational covariance component for use in determining update type
-    const FloatingPoint translational_covariance_norm =
-        pose_covariance_->block<3, 3>(3,3).norm();
+  // retrieve norm of translational covariance component for use in determining update type. TODO: this eventually needs to be replaced with the left-jacobian multipled rho to get cartesian covariance instead of exponential
+//   const FloatingPoint translational_covariance_norm = pose_covariance_->block<3, 3>(3,3).norm();
 
   // ensure that min_image_index and max_image_index are within depth uncertainty image bounds
   const FloatingPoint min_z_coordinate =
-      min_sensor_coordinates.z() - 6.f * depth_uncertainty_image_->at(min_image_idx_clamped) - 3.f * translational_covariance_norm;
-  // LOG(INFO) << "Min z coordinate: " << min_z_coordinate;
+      min_sensor_coordinates.z() - 3.f * depth_uncertainty_image_->at(min_image_idx_clamped); // - 3.f * translational_covariance_norm;
   const FloatingPoint max_z_coordinate =
-      max_sensor_coordinates.z() + 3.f * depth_uncertainty_image_->at(max_image_idx_clamped) + 3.f * translational_covariance_norm;
-  // LOG(INFO) << "Max z coordinate: " << max_z_coordinate;
+      max_sensor_coordinates.z() + 3.f * depth_uncertainty_image_->at(max_image_idx_clamped); // + 3.f * translational_covariance_norm;
   return hierarchical_range_image_.getUpdateType(
       min_image_index, max_image_index, min_z_coordinate, max_z_coordinate);
 }

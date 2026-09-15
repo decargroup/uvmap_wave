@@ -2,6 +2,10 @@
 #define WAVEMAP_CORE_INTEGRATOR_MEASUREMENT_MODEL_MEASUREMENT_MODEL_BASE_H_
 
 #include <memory>
+#include <shared_mutex>
+#include <mutex>
+#include <map>
+#include <unordered_map>
 
 #include "wavemap/core/common.h"
 #include "wavemap/core/config/type_selector.h"
@@ -56,6 +60,26 @@ class MeasurementModelLieBase {
   virtual FloatingPoint getPaddingAngle() const = 0;
   virtual FloatingPoint getPaddingSurfaceFront() const = 0;
   virtual FloatingPoint getPaddingSurfaceBack() const = 0;
+
+  // internal map of Vector2D to const Eigen::Matrix<double, 6, 6> to hash the covariance matrices for each pixel in the depth image for a given image
+  mutable std::map<std::pair<int, int>, Eigen::MatrixXd> covariance_map_;
+
+  // internal map of Vector2D to const Eigen::Matrix<double, 6, 1> to hash the information matrices for each pixel in the depth image for a given image
+  mutable std::map<std::pair<int, int>, Eigen::MatrixXd> information_map_;
+
+  // internal shared mutex to protect the covariance and information maps from concurrent access
+  mutable std::shared_mutex m_mutex;
+
+  void clearInternalMaps() const {
+    covariance_map_.clear();
+    information_map_.clear();
+  }
+
+  // virtual void generateCovarianceAndInformationMatrices(
+  //   const PosedImage<>::Ptr posed_depth_image,
+  //   const Image<FloatingPoint>::Ptr depth_uncertainty_image,
+  //   std::shared_ptr<MatrixT<double>> pose_covariance
+  // ) const = 0;
 
   // virtual FloatingPoint computeWorstCaseApproximationError(
   //     UpdateType update_type, FloatingPoint cell_to_sensor_distance,

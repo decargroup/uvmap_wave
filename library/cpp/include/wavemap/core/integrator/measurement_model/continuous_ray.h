@@ -10,6 +10,7 @@
 #include "wavemap/core/integrator/measurement_model/measurement_model_base.h"
 #include "wavemap/core/integrator/projective/update_type.h"
 #include "wavemap/3rd_party/pymlg/se3.h"
+#include "wavemap/3rd_party/pymlg/so3.h"
 
 namespace wavemap {
 /**
@@ -136,6 +137,11 @@ class LieContinuousRay : public MeasurementModelLieBase {
       const Point3D& r_pmaxz_c,
       const Eigen::Matrix4d& T_ac) const override;
 
+  // void generateCovarianceAndInformationMatrices(
+  //     const PosedImage<>::Ptr posed_depth_image,
+  //     const Image<FloatingPoint>::Ptr depth_uncertainty_image,
+  //     std::shared_ptr<MatrixT<double>> pose_covariance) const override;
+
  private:
   const ContinuousRayConfig config_;
 
@@ -153,7 +159,7 @@ class LieContinuousRay : public MeasurementModelLieBase {
   FloatingPoint computeBeamUpdate(const Index2D& image_index, const SensorCoordinates& sensor_coordinates, const Eigen::Matrix4d& T_ac, const Point3D& r_pcenterz_c, const Point3D& r_pmaxz_c) const;
 
   // Compute the full measurement update, i.e. valid anywhere
-  FloatingPoint computeFullBeamUpdate(const Eigen::Matrix<double, 6, 1>& delta_xi_ap, const Eigen::Matrix<double, 6, 6>& Eta_xi_ap, FloatingPoint d_p) const;
+  FloatingPoint computeFullBeamUpdate(const Eigen::Matrix<double, 6, 1>& delta_xi_ap, const Eigen::Matrix<double, 6, 6>& Eta_xi_ap, FloatingPoint d_p, FloatingPoint cell_width) const;
 
   // full covariance helper
   Eigen::Matrix<double, 6, 6> getFullCovarianceMatrix(const Index2D& image_index, const Eigen::Matrix4d& T_cp_tilde, const Eigen::Matrix4d& T_ac, const Eigen::Vector3d& u_pz_c) const;

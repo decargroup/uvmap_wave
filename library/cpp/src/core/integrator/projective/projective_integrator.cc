@@ -144,6 +144,9 @@ void LieProjectiveIntegrator::integrate(const PosedImage<>& range_image, const I
   importPoseCovariance(pose_covariance);
   // LOG(INFO) << "All data imported into LieProjectiveIntegrator, updating map.";
   updateMap();
+
+  // after updating map, clear the covariance and information maps in the MeasurementModelLieBase
+  measurement_model_->clearInternalMaps();
 }
 
 void LieProjectiveIntegrator::importDepthImage(

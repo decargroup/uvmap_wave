@@ -307,15 +307,17 @@ void HashedChunkedWaveletLieIntegrator::updateNodeRecursive(  // NOLINT
     const auto sensor_coordinates =
         projection_model_->cartesianToSensor(C_child_center);
 
-    // TODO: for now, run without this for maximum accuracy
-    if (update_type == UpdateType::kFullyFree || update_type == UpdateType::kFullyUnobserved) {
-    // if(measurement_model_->computeWorstCaseApproximationError(sensor_coordinates, C_child_center, C_child_corner_max, C_child_corner_min, posed_depth_image_->getPose().getTransformationMatrix().cast<double>(), update_type, bounding_sphere_radius)) {
-      // LOG(WARNING) << "Running update for child at index: " << child_index.toString();
-      const FloatingPoint sample = computeUpdate(C_child_center, C_child_corner_max, posed_depth_image_->getPose().getTransformationMatrix().cast<double>());
-      child_value += sample;
-      block_needs_thresholding = true;
-      continue;
-    }
+    // Check if we're outside the min/max range, this will also make sure that the depth is valid
+    // if (!(sensor_coordinates.depth < config_.min_range ||
+    //     config_.max_range < sensor_coordinates.depth)) {
+    //   if(measurement_model_->computeWorstCaseApproximationError(sensor_coordinates, C_child_center, C_child_corner_max, C_child_corner_min, posed_depth_image_->getPose().getTransformationMatrix().cast<double>(), update_type, bounding_sphere_radius)) {
+    //     // LOG(WARNING) << "Running update for child at index: " << child_index.toString();
+    //     const FloatingPoint sample = computeUpdate(C_child_center, C_child_corner_max, posed_depth_image_->getPose().getTransformationMatrix().cast<double>());
+    //     child_value += sample;
+    //     block_needs_thresholding = true;
+    //     continue;
+    //   }
+    // }
 
     // LOG(WARNING) << "Refining child at index: " << child_index.toString();
 
@@ -325,7 +327,6 @@ void HashedChunkedWaveletLieIntegrator::updateNodeRecursive(  // NOLINT
 
     // If we're at the leaf level, directly compute the update
     if (child_index.height <= termination_height_ + 1) {
-      // LOG(WARNING) << "Updated child at index: " << child_index.toString();
       updateLeavesBatch(child_index, child_value, child_details);
     } else {
       // Otherwise, recurse
